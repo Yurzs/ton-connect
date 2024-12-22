@@ -12,7 +12,7 @@ from typing import (
 )
 
 import aiohttp
-from pydantic import HttpUrl, validate_call
+from pydantic import Field, HttpUrl, validate_call
 from pymongo.errors import DuplicateKeyError
 
 import ton_connect.model.app.response as app_responses
@@ -26,11 +26,14 @@ from ton_connect.model.app.request import (
     TonProofRequestItem,
 )
 from ton_connect.model.app.wallet import WalletApp
+from ton_connect.model.model import BaseModel
+from ton_connect.model.wallet.device import Device
 from ton_connect.model.wallet.event import (
     TonAddressItem,
     WalletEventName,
     WalletEventType,
 )
+from ton_connect.model.wallet.wallet import Account
 from ton_connect.storage import Storage, StorageData, StorageKey
 
 T = TypeVar("T")
@@ -48,10 +51,17 @@ D = Callable[[Concatenate[TC, P], Awaitable[None]], None]
 
 LOG = logging.getLogger(__name__)
 
-EventListener = Callable[[WalletEventType], Awaitable[None]]
+EventListener = Callable[["ConnectorEvent"], Awaitable[None]]
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+
+class ConnectorEvent(BaseModel):
+    wallet_name: str = Field(..., description="Wallet name")
+    event: WalletEventType = Field(..., description="Event")
+    device: Device = Field(..., description="User device info")
+    account: Account = Field(..., description="User account info")
 
 
 class Task:
@@ -271,7 +281,10 @@ class TonConnect:
     async def handle_message(self, connection: Connection, message: BridgeMessage) -> None:
         """Handle queue message."""
 
-        tasks: list[Task] = []
+        int_tasks: list[Task] = []
+
+        if message.event != "heartbeat":
+            LOG.info(f"Handling message: %s", message)
 
         match message.event:
             case "heartbeat":
@@ -288,8 +301,8 @@ class TonConnect:
 
             case wallet_events.DisconnectEvent() | wallet_events.ConnectErrorEvent():
                 bridge = self.get_bridge(message.app_name)
-                tasks.append(Task(bridge.disconnect))
-                tasks.append(Task(self.storage.remove, message.app_name, StorageKey.CONNECTION))
+                int_tasks.append(Task(bridge.disconnect))
+                int_tasks.append(Task(self.storage.remove, message.app_name, StorageKey.CONNECTION))
 
             case (
                 app_responses.SendTransactionResponseError()
@@ -309,11 +322,18 @@ class TonConnect:
                 LOG.error(f"Unhandled event: {message.event}")
 
         if message.event.name in self.listeners:
-            await asyncio.create_task(self.listeners[message.event.name](message.event))
+            connection = await self.storage.get_connection(message.app_name)
+            connector_event = ConnectorEvent(
+                wallet_name=message.app_name,
+                event=message.event,
+                device=connection.connect_event.payload.device,
+                account=connection.connect_event.payload.find_item_by_type(TonAddressItem),
+            )
+            await asyncio.create_task(self.listeners[message.event.name](connector_event))
         else:
             LOG.error(f"Unhandled event: {message.event}")
 
-        for task in tasks:
+        for task in int_tasks:
             await task()
 
     async def start_listener(self) -> None:
