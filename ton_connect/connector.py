@@ -62,6 +62,7 @@ class ConnectorEvent(BaseModel):
     event: WalletEventType = Field(..., description="Event")
     device: Device = Field(..., description="User device info")
     account: Account = Field(..., description="User account info")
+    entity_id: str = Field(..., description="Entity ID")
 
 
 class Task:
@@ -334,6 +335,7 @@ class TonConnect:
                 event=message.event,
                 device=connection.connect_event.payload.device,
                 account=connection.connect_event.payload.find_item_by_type(TonAddressItem),
+                entity_id=self.storage.entity_id,
             )
             await asyncio.create_task(self.listeners[message.event.name](connector_event))
         else:
