@@ -231,7 +231,7 @@ class TonConnect:
                     source=wallet.app_name,
                 )
 
-                await self.storage.set_connection(wallet.app_name, connection)
+            await self.storage.set_connection(wallet.app_name, connection)
 
             request_items: list[TonAddressRequestItem | TonProofRequestItem] = [
                 TonAddressRequestItem()
@@ -349,12 +349,13 @@ class TonConnect:
                     message = await self.queue.get()
                     LOG.debug(f"Event received: {message}")
 
-                    connection = await self.storage.get_connection(message.app_name)
-                    if connection is None:
-                        LOG.error(f"Connection not found for {message.app_name}")
-                        continue
+                    async with self.lock:
+                        connection = await self.storage.get_connection(message.app_name)
+                        if connection is None:
+                            LOG.error(f"Connection not found for {message.app_name}")
+                            continue
 
-                    await self.handle_message(connection, message)
+                        await self.handle_message(connection, message)
 
                 except Exception as e:
                     LOG.error(f"Error processing event: {e}")
