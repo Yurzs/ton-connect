@@ -88,14 +88,11 @@ class SendTransactionRequest(AppRequest[Literal[Method.SEND_TRANSACTION]]):
 
 
 class SignDataRequest(AppRequest[Literal[Method.SIGN_DATA]]):
-    pass
-    # params: List[SignDataParams] = Field(..., description="Data to sign")
+    method: Literal[Method.SIGN_DATA] = Method.SIGN_DATA
 
 
 class DisconnectRequest(AppRequest[Literal[Method.DISCONNECT]]):
-    pass
-
-    # params: List[Any] = Field(..., description="Parameters for disconnect", init=False)
+    method: Literal[Method.DISCONNECT] = Method.DISCONNECT
 
 
 class TonAddressRequestItem(BaseModel):
