@@ -46,7 +46,7 @@ class WalletMessageEvent(BaseModel):
 
 
 class BridgeMessage(BaseModel):
-    event: Literal["heartbeat"] | WalletEventType | AppResponses = Field(
+    event: Literal["heartbeat", "stopped"] | WalletEventType | AppResponses = Field(
         ..., description="Wallet event"
     )
     app_name: str = Field(..., description="Wallet app name")
@@ -179,15 +179,23 @@ class Bridge:
     async def connect(self, request: ConnectRequest) -> Annotated[str, AnyUrl]:
         """Send request to connect to the wallet via the bridge."""
 
-        self.disconnect()
+        await self.disconnect(send_event=False)
         self.reset_crypto()
 
         return self.generate_connect_url(request, self.crypto.public_key)
 
-    def disconnect(self) -> None:
+    async def disconnect(self, send_event: bool = True) -> None:
         """DisconnectEvent from the wallet."""
 
         if self.listener is not None:
+            if send_event:
+                await self.queue.put(
+                    BridgeMessage(
+                        event="stopped",
+                        app_name=self.app_name,
+                        source=b"",
+                    )
+                )
             self.listener.cancel()
 
     async def send_request(
@@ -310,7 +318,7 @@ class Bridge:
                 LOG.exception("Bridge connection unhandled error: %s", e)
             finally:
                 if not self.stop.is_set():
-                    self.disconnect()
+                    await self.disconnect(send_event=False)
                     LOG.info("Retrying Bridge connection in 1 second...")
                     await asyncio.sleep(1)
 

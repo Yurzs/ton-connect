@@ -197,7 +197,7 @@ class TonConnect:
 
             bridge = self.get_bridge(wallet.app_name)
             if bridge is not None and bridge.is_alive:
-                bridge.disconnect()
+                await bridge.disconnect(send_event=False)
 
             connection = await self.storage.get_connection(wallet.app_name)
             if connection is not None and connection.connect_event:
@@ -292,6 +292,12 @@ class TonConnect:
                 await self.storage.set(message.app_name, StorageKey.HEARTBEAT, int(time.time()))
                 return
 
+            case "stopped":
+                LOG.info("Bridge %s stopped", message.app_name)
+                self.bridges.pop(message.app_name)
+                await self.storage.remove(message.app_name, StorageKey.CONNECTION)
+                return
+
             case wallet_events.ConnectSuccessEvent():
                 connection.last_wallet_event_id = message.event.id
                 if message.event.payload.find_item_by_type(TonAddressItem) is not None:
@@ -365,7 +371,7 @@ class TonConnect:
         except asyncio.CancelledError:
             LOG.debug("TonConnector event listener stopped. Stopping bridge listeners...")
             for bridge in self.bridges.values():
-                bridge.disconnect()
+                await bridge.disconnect(send_event=False)
         finally:
             self.listener = None
             self.listener_started.clear()
