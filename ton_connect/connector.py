@@ -7,6 +7,7 @@ from typing import (
     Callable,
     Concatenate,
     Iterable,
+    Literal,
     ParamSpec,
     TypeVar,
 )
@@ -55,6 +56,9 @@ EventListener = Callable[["ConnectorEvent"], Awaitable[None]]
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+
+ListenerEvent = WalletEventName | Literal["heartbeat", "stopped"]
 
 
 class ConnectorEvent(BaseModel):
@@ -113,7 +117,7 @@ class TonConnect:
         self.bridges: dict[str, Bridge] = {}
         self.lock = asyncio.Lock()
 
-        self.listeners: dict[WalletEventName, EventListener] = {}
+        self.listeners: dict[ListenerEvent, EventListener] = {}
 
         self.listener_started = asyncio.Event()
         self.listener: asyncio.Task | None = None
@@ -285,19 +289,17 @@ class TonConnect:
         int_tasks: list[Task] = []
 
         if message.event != "heartbeat":
-            LOG.info(f"Handling message: %s", message)
+            LOG.info("Handling message: %s", message)
 
         match message.event:
             case "heartbeat":
                 LOG.debug("Heartbeat received")
                 await self.storage.set(message.app_name, StorageKey.HEARTBEAT, int(time.time()))
-                return
 
             case "stopped":
                 LOG.info("Bridge %s stopped", message.app_name)
                 self.bridges.pop(message.app_name)
                 await self.storage.remove(message.app_name, StorageKey.CONNECTION)
-                return
 
             case wallet_events.ConnectSuccessEvent():
                 connection.last_wallet_event_id = message.event.id
@@ -328,7 +330,7 @@ class TonConnect:
             case _:
                 LOG.error(f"Unhandled event: {message.event}")
 
-        if message.event.name in self.listeners:
+        if isinstance(message.event, WalletEventType) and message.event.name in self.listeners:
             connection = await self.storage.get_connection(message.app_name)
             connector_event = ConnectorEvent(
                 wallet_name=message.app_name,
@@ -389,7 +391,7 @@ class TonConnect:
     @validate_call
     async def listen(
         self,
-        event: WalletEventName,
+        event: ListenerEvent,
         handler: EventListener,
     ) -> None:
         """Add listener to the event.
