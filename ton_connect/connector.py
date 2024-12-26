@@ -340,7 +340,7 @@ class TonConnect:
                 entity_id=self.storage.entity_id,
             )
             await asyncio.create_task(self.listeners[message.event.name](connector_event))
-        else:
+        elif isinstance(message.event, WalletEventType):
             LOG.error(f"Unhandled event: {message.event}")
 
         for task in int_tasks:
