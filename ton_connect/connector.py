@@ -92,6 +92,18 @@ class RPCError(Exception):
     pass
 
 
+class ConnectionNotFoundError(Exception):
+    pass
+
+
+class ConnectionSourceNotFoundError(Exception):
+    pass
+
+
+class ConnectionSessionNotFoundError(Exception):
+    pass
+
+
 class TonConnect:
     APPS = {}
     APPS_CACHE_TTL = 10 * 60
@@ -251,19 +263,22 @@ class TonConnect:
 
     @ensure_listener
     @validate_call
-    async def restore_connection(self, wallet: WalletApp) -> None:
+    async def restore_connection(self, wallet: WalletApp) -> Bridge:
         """Restore connection to the wallet."""
 
         async with self.lock:
             connection = await self.storage.get_connection(wallet.app_name)
             if not connection:
-                return
+                LOG.info("Connection not found for %s. Use .connect", wallet.app_name)
+                raise ConnectionNotFoundError()
 
             if not connection.source:
-                raise Exception("Connection source is not defined")
+                LOG.info("Connection source not found for %s", wallet.app_name)
+                raise ConnectionSourceNotFoundError()
 
             if not connection.session:
-                raise Exception("Connection session is not defined")
+                LOG.info("Connection session not found for %s", wallet.app_name)
+                raise ConnectionSessionNotFoundError()
 
             ready = asyncio.Event()
 
@@ -282,6 +297,18 @@ class TonConnect:
             self.set_bridge(wallet.app_name, bridge)
 
             ready.set()
+
+            LOG.debug(
+                "Waiting for bridge connection %s %s",
+                self.storage.entity_id,
+                wallet.app_name,
+            )
+
+            await bridge.connected
+
+            LOG.debug("Bridge connected %s %s", self.storage.entity_id, wallet.app_name)
+
+            return bridge
 
     async def handle_message(self, connection: Connection, message: BridgeMessage) -> None:
         """Handle queue message."""
