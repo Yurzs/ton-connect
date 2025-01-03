@@ -304,7 +304,7 @@ class TonConnect:
                 wallet.app_name,
             )
 
-            await bridge.connected
+            await bridge.connected.wait()
 
             LOG.debug("Bridge connected %s %s", self.storage.entity_id, wallet.app_name)
 
