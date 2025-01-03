@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from asyncio import Future
 from typing import (
     Any,
     Awaitable,
@@ -433,7 +434,9 @@ class TonConnect:
         self.listeners[event] = handler
 
     @validate_call
-    async def send(self, app_name: str, request: AppRequestType) -> app_responses.AppResponses:
+    async def send(
+        self, app_name: str, request: AppRequestType
+    ) -> asyncio.Task[app_responses.AppResponses]:
         """Send request to the wallet.
 
         :param app_name: Wallet app name.
@@ -463,12 +466,9 @@ class TonConnect:
             await self.storage.set_connection(app_name, connection)
 
             if response["statusCode"] == 200:
-                ready: asyncio.Future[app_responses.AppResponses] = asyncio.Future()
+                ready: asyncio.Future[app_responses.AppResponses] = Future()
                 self.rpc_response_waiters[request.id] = ready
 
-                try:
-                    return await asyncio.wait_for(ready, timeout=ttl)
-                finally:
-                    self.rpc_response_waiters.pop(request.id)
+                return asyncio.create_task(asyncio.wait_for(ready, timeout=ttl))
 
             raise RPCError(response)
