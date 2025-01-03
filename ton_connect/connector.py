@@ -279,7 +279,7 @@ class TonConnect:
 
             await bridge.register_session()
 
-            self.set_bridge(connection.source, bridge)
+            self.set_bridge(wallet.app_name, bridge)
 
             ready.set()
 
