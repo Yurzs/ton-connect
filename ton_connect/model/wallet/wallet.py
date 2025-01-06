@@ -4,7 +4,7 @@ from typing import Optional
 
 from nacl.encoding import HexEncoder
 from nacl.signing import VerifyKey
-from pydantic import BaseModel, Field
+from pydantic import Base64Str, BaseModel, Field
 
 from ton_connect.types import HexBytes
 
@@ -65,7 +65,7 @@ class TonProof(BaseModel):
     timestamp: int = Field(..., description="Timestamp of the proof")
     domain: TonProofDomain = Field(..., description="Domain of the proof")
     payload: str = Field(..., description="Payload of the proof")
-    signature: HexBytes = Field(..., description="Signature of the proof")
+    signature: Base64Str = Field(..., description="Signature of the proof")
 
     def verify(self, public_key: bytes) -> bool:
         """Verify proof signature."""
