@@ -129,6 +129,7 @@ class TonConnect:
         self.queue: asyncio.Queue[BridgeMessage] = asyncio.Queue()
         self.bridges: dict[str, Bridge] = {}
         self.lock = asyncio.Lock()
+        self.send_lock = asyncio.Lock()
 
         self.listeners: dict[ListenerEvent, EventListener] = {}
 
@@ -443,7 +444,7 @@ class TonConnect:
         :param request: Request to send.
         """
 
-        async with self.lock:
+        async with self.send_lock:
             bridge = self.get_bridge(app_name)
             if bridge is None:
                 raise Exception("Bridge not found")
