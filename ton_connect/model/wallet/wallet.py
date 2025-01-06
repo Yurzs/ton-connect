@@ -56,10 +56,14 @@ class Wallet(BaseModel):
     account: Account = Field(..., description="User's account", alias="ton_addr")
 
 
+class TonProofDomain(BaseModel):
+    len: int = Field(..., description="Length of the domain", alias="lengthBytes")
+    val: str = Field(..., description="Value of the domain", alias="value")
+
+
 class TonProof(BaseModel):
     timestamp: int = Field(..., description="Timestamp of the proof")
-    domain_len: int = Field(..., description="Length of the domain")
-    domain_val: str = Field(..., description="Value of the domain")
+    domain: TonProofDomain = Field(..., description="Domain of the proof")
     payload: str = Field(..., description="Payload of the proof")
     signature: HexBytes = Field(..., description="Signature of the proof")
 
