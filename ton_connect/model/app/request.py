@@ -72,7 +72,7 @@ class SignDataParams(BaseModel):
 class SendTransactionMessage(BaseModel):
     address: str = Field(..., description="Address")
     amount: str = Field(..., description="Amount")
-    payload: Base64Str | None = Field(None, description="Payload")
+    payload: str | None = Field(None, description="Payload")
 
 
 class SendTransactionRequest(AppRequest[Literal[Method.SEND_TRANSACTION]]):
