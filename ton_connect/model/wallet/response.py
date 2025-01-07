@@ -18,7 +18,7 @@ class Action(str, Enum):
 
 
 class WalletResponseError(BaseModel, Generic[_GenericResponseError]):
-    id: str = Field(..., description="Event ID")
+    id: int = Field(..., description="Event ID")
     error: _GenericResponseError = Field(..., description="Error message")
 
 
