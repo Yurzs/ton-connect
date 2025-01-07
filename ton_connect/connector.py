@@ -442,12 +442,14 @@ class TonConnect:
         app_name: str,
         request: AppRequestType,
         wait_response: bool = True,
+        timeout: int = 5,
     ) -> asyncio.Task[app_responses.AppResponses] | None:
         """Send request to the wallet.
 
         :param app_name: Wallet app name.
         :param request: Request to send.
         :param wait_response: Wait for response. Return task if True.
+        :param timeout: Timeout for sending request.
         """
 
         async with self.send_lock:
@@ -470,6 +472,7 @@ class TonConnect:
                 request,
                 wallet_app_key=connection.session.wallet_key,
                 ttl=ttl,
+                timeout=timeout,
             )
 
         LOG.info("Got response for request %s: %s", request.id, response)

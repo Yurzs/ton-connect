@@ -203,6 +203,7 @@ class Bridge:
         request: AppRequest,
         wallet_app_key: HexBytes,
         ttl: int | None = None,
+        timeout: int = 5,
     ) -> dict[str, Any]:
         """Send request to the wallet."""
 
@@ -223,7 +224,12 @@ class Bridge:
         )
 
         async with aiohttp.ClientSession(headers=self.request_headers) as session:
-            async with session.post(url, data=data, ssl=SSL_CONTEXT) as response:
+            async with session.post(
+                url,
+                data=data,
+                ssl=SSL_CONTEXT,
+                timeout=timeout,
+            ) as response:
                 LOG.info(
                     "Sent request %s to the wallet: %s (%s)",
                     request.id,
