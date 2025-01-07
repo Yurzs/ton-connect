@@ -24,7 +24,7 @@ from ton_connect.misc import SSL_CONTEXT
 from ton_connect.model.app.request import (
     AppRequestType,
     ConnectRequest,
-    TonAddressRequestItem,
+    SendTransactionRequest, TonAddressRequestItem,
     TonProofRequestItem,
 )
 from ton_connect.model.app.wallet import WalletApp
@@ -110,8 +110,6 @@ class TonConnect:
     APPS_CACHE_TTL = 10 * 60
     APPS_URL = "https://raw.githubusercontent.com/ton-blockchain/wallets-list/main/wallets-v2.json"
 
-    LOCK = asyncio.Lock()
-
     def __init__(
         self,
         manifest_url: HttpUrl,
@@ -136,7 +134,7 @@ class TonConnect:
         self.listener_started = asyncio.Event()
         self.listener: asyncio.Task | None = None
 
-        self.rpc_response_waiters: dict[str, asyncio.Future[Any]] = {}
+        self.rpc_response_waiters: dict[int, asyncio.Future[Any]] = {}
 
     def set_bridge(self, app_name: str, bridge: Bridge) -> None:
         self.bridges[app_name] = bridge
@@ -394,7 +392,10 @@ class TonConnect:
                             LOG.error(f"Connection not found for {message.app_name}")
                             continue
 
-                        await self.handle_message(connection, message)
+                        await asyncio.wait_for(
+                            self.handle_message(connection, message),
+                            timeout=5,
+                        )
 
                 except Exception as e:
                     LOG.error(f"Error processing event: {e}")
@@ -436,12 +437,16 @@ class TonConnect:
 
     @validate_call
     async def send(
-        self, app_name: str, request: AppRequestType
-    ) -> asyncio.Task[app_responses.AppResponses]:
+        self,
+        app_name: str,
+        request: AppRequestType,
+        wait_response: bool = True,
+    ) -> asyncio.Task[app_responses.AppResponses] | None:
         """Send request to the wallet.
 
         :param app_name: Wallet app name.
         :param request: Request to send.
+        :param wait_response: Wait for response. Return task if True.
         """
 
         async with self.send_lock:
@@ -456,6 +461,8 @@ class TonConnect:
             request.id = connection.next_rpc_request_id
             connection.next_rpc_request_id += 1
 
+            await self.storage.set_connection(app_name, connection)
+
             ttl = 5 * 60
 
             response = await bridge.send_request(
@@ -463,13 +470,16 @@ class TonConnect:
                 wallet_app_key=connection.session.wallet_key,
                 ttl=ttl,
             )
-            LOG.info("Got response for request %s: %s", request.id, response)
-            await self.storage.set_connection(app_name, connection)
 
-            if response["statusCode"] == 200:
-                ready: asyncio.Future[app_responses.AppResponses] = Future()
-                self.rpc_response_waiters[request.id] = ready
+        LOG.info("Got response for request %s: %s", request.id, response)
 
-                return asyncio.create_task(asyncio.wait_for(ready, timeout=ttl))
+        if response["statusCode"] == 200 and wait_response:
+            ready: asyncio.Future[app_responses.AppResponses] = Future()
+            self.rpc_response_waiters[request.id] = ready
 
+            return asyncio.create_task(asyncio.wait_for(ready, timeout=ttl))
+
+        elif response["statusCode"] != 200:
             raise RPCError(response)
+
+        return None
