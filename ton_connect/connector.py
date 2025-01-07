@@ -406,7 +406,7 @@ class TonConnect:
                         )
 
                 except Exception as e:
-                    LOG.error(f"Error processing event: {message} {type(e)}({e})")
+                    LOG.exception(f"Error processing event: {message} {type(e)}({e})")
                 else:
                     self.queue.task_done()
 
