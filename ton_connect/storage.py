@@ -12,20 +12,20 @@ from ton_connect.bridge import Connection
 Model = TypeVar("Model", bound="StorageData")
 
 
-class StorageKey(str, Enum):
+class BridgeKey(str, Enum):
     CONNECTION = "connection"
     LAST_EVENT_ID = "last_event_id"
     HEARTBEAT = "heartbeat"
 
 
-class StorageData(BaseModel):
+class BridgeData(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     connection: Connection | None = Field(None, description="Connection to wallet object.")
     last_event_id: int | None = Field(None, description="Last wallet event ID.")
 
 
-class Storage(ABC, Generic[Model]):
+class BridgeStorage(ABC, Generic[Model]):
     def __init__(self, entity_id: str) -> None:
         self.entity_id = entity_id
         self.lock = asyncio.Lock()
@@ -34,13 +34,13 @@ class Storage(ABC, Generic[Model]):
     async def insert(self, app_name: str, data: Model) -> None: ...
 
     @abstractmethod
-    async def set(self, app_name: str, key: StorageKey, value: Connection | int) -> None: ...
+    async def set(self, app_name: str, key: BridgeKey, value: Connection | int) -> None: ...
 
     @abstractmethod
-    async def get(self, app_name: str, key: StorageKey) -> Connection | int: ...
+    async def get(self, app_name: str, key: BridgeKey) -> Connection | int: ...
 
     @abstractmethod
-    async def remove(self, app_name: str, key: StorageKey) -> None: ...
+    async def remove(self, app_name: str, key: BridgeKey) -> None: ...
 
     @abstractmethod
     async def delete(self, app_name: str) -> None: ...
@@ -50,7 +50,7 @@ class Storage(ABC, Generic[Model]):
 
         async with self.lock:
             try:
-                return cast(Connection, await self.get(app_name, StorageKey.CONNECTION))
+                return cast(Connection, await self.get(app_name, BridgeKey.CONNECTION))
             except KeyError:
                 return None
 
@@ -58,18 +58,18 @@ class Storage(ABC, Generic[Model]):
         """Set connection to storage."""
 
         async with self.lock:
-            await self.set(app_name, StorageKey.CONNECTION, connection)
+            await self.set(app_name, BridgeKey.CONNECTION, connection)
 
     async def get_last_event_id(self, app_name: str) -> int | None:
         async with self.lock:
-            return cast(int | None, await self.get(app_name, StorageKey.LAST_EVENT_ID))
+            return cast(int | None, await self.get(app_name, BridgeKey.LAST_EVENT_ID))
 
     async def set_last_event_id(self, app_name: str, value: int) -> None:
         async with self.lock:
-            await self.set(app_name, StorageKey.LAST_EVENT_ID, value)
+            await self.set(app_name, BridgeKey.LAST_EVENT_ID, value)
 
 
-class DictStorage(Storage, Generic[Model]):
+class DictBridgeStorage(BridgeStorage, Generic[Model]):
     STORAGE: dict[str, Model] = {}
 
     @staticmethod
@@ -93,21 +93,21 @@ class DictStorage(Storage, Generic[Model]):
 
         self.STORAGE[key] = data
 
-    async def set(self, app_name: str, key: StorageKey, value: Connection | int) -> None:
+    async def set(self, app_name: str, key: BridgeKey, value: Connection | int) -> None:
         setattr(self.STORAGE[self.gen_key(app_name, self.entity_id)], key.value, value)
 
     async def get(
         self,
         app_name: str,
-        key: StorageKey,
+        key: BridgeKey,
     ) -> Connection | int:
         return getattr(self.STORAGE[self.gen_key(app_name, self.entity_id)], key)
 
-    async def remove(self, app_name: str, key: StorageKey) -> None:
+    async def remove(self, app_name: str, key: BridgeKey) -> None:
         delattr(self.STORAGE[self.gen_key(app_name, self.entity_id)], key.value)
 
 
-class MongoStorage(Storage, Generic[Model]):
+class MongoBridgeStorage(BridgeStorage, Generic[Model]):
     def __init__(
         self,
         entity_id: str,
@@ -164,7 +164,7 @@ class MongoStorage(Storage, Generic[Model]):
     async def get(
         self,
         app_name: str,
-        key: StorageKey,
+        key: BridgeKey,
     ) -> Connection | int:
         """Get value from storage. Requires extra motor dependency."""
 
@@ -174,9 +174,9 @@ class MongoStorage(Storage, Generic[Model]):
         if not doc:
             raise KeyError("App not found in storage.")
 
-        return getattr(StorageData.model_validate(doc), key.value)
+        return getattr(BridgeData.model_validate(doc), key.value)
 
-    async def set(self, app_name: str, key: StorageKey, value: Connection | int) -> None:
+    async def set(self, app_name: str, key: BridgeKey, value: Connection | int) -> None:
         """Set value to storage. Requires extra motor dependency."""
 
         await self.collection.update_one(
@@ -190,7 +190,7 @@ class MongoStorage(Storage, Generic[Model]):
             },
         )
 
-    async def remove(self, app_name: str, key: StorageKey) -> None:
+    async def remove(self, app_name: str, key: BridgeKey) -> None:
         """Remove value from storage. Requires extra motor dependency."""
 
         await self.collection.update_one(

@@ -36,7 +36,7 @@ from ton_connect.model.wallet.event import (
     WalletEventType,
 )
 from ton_connect.model.wallet.wallet import Account
-from ton_connect.storage import Storage, StorageData, StorageKey
+from ton_connect.storage import BridgeStorage, BridgeData, BridgeKey
 
 T = TypeVar("T")
 C = TypeVar("C")
@@ -113,7 +113,7 @@ class TonConnect:
     def __init__(
         self,
         manifest_url: HttpUrl,
-        storage: Storage,
+        storage: BridgeStorage,
     ) -> None:
         """Init TON Connector.
 
@@ -122,7 +122,7 @@ class TonConnect:
         """
 
         self.manifest_url: HttpUrl = manifest_url
-        self.storage: Storage = storage
+        self.storage: BridgeStorage = storage
 
         self.queue: asyncio.Queue[BridgeMessage] = asyncio.Queue()
         self.bridges: dict[str, Bridge] = {}
@@ -207,20 +207,19 @@ class TonConnect:
         """
 
         async with self.lock:
-            try:
-                await self.storage.insert(wallet.app_name, StorageData())
-            except (KeyError, DuplicateKeyError):
-                pass
-
-            bridge = self.get_bridge(wallet.app_name)
-            if bridge is not None and bridge.is_alive:
-                await bridge.disconnect(send_event=False)
-
             connection = await self.storage.get_connection(wallet.app_name)
             if connection is not None and connection.connect_event:
                 raise ConnectionExistsError(
                     "Connection already exists. Use restore_connection method."
                 )
+
+            bridge = self.get_bridge(wallet.app_name)
+            if bridge is not None and bridge.is_alive:
+                await bridge.disconnect(send_event=True)
+                await asyncio.sleep(0.2)
+
+            await self.storage.delete(wallet.app_name)
+            await self.storage.insert(wallet.app_name, BridgeData())
 
             ready = asyncio.Event()
 
@@ -321,12 +320,12 @@ class TonConnect:
         match message.event:
             case "heartbeat":
                 LOG.debug("Heartbeat received")
-                await self.storage.set(message.app_name, StorageKey.HEARTBEAT, int(time.time()))
+                await self.storage.set(message.app_name, BridgeKey.HEARTBEAT, int(time.time()))
 
             case "stopped":
                 LOG.info("Bridge %s stopped", message.app_name)
                 self.bridges.pop(message.app_name)
-                await self.storage.remove(message.app_name, StorageKey.CONNECTION)
+                await self.storage.remove(message.app_name, BridgeKey.CONNECTION)
 
             case wallet_events.ConnectSuccessEvent():
                 connection.last_wallet_event_id = message.event.id
@@ -336,9 +335,11 @@ class TonConnect:
                 await self.storage.set_connection(message.app_name, connection)
 
             case wallet_events.DisconnectEvent() | wallet_events.ConnectErrorEvent():
+                LOG.info("Disconnecting from %s for %s", message.app_name, self.storage.entity_id)
+
                 bridge = self.get_bridge(message.app_name)
                 int_tasks.append(Task(bridge.disconnect))
-                int_tasks.append(Task(self.storage.remove, message.app_name, StorageKey.CONNECTION))
+                int_tasks.append(Task(self.storage.delete, message.app_name))
 
             case (
                 app_responses.SendTransactionResponseError()

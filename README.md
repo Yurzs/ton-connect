@@ -22,10 +22,11 @@ To initialize the `TonConnect` class, you need to provide the manifest URL and a
 
 ```python
 from ton_connect.connector import TonConnect
-from ton_connect.storage import DictStorage
+from ton_connect.storage import DictBridgeStorage
+
 
 manifest_url = "https://example.com/manifest.json"
-storage = DictStorage("user_id")
+storage = DictBridgeStorage("user_id")
 
 ton_connect = TonConnect(manifest_url, storage)
 ```
