@@ -42,6 +42,9 @@ class Storage(ABC, Generic[Model]):
     @abstractmethod
     async def remove(self, app_name: str, key: StorageKey) -> None: ...
 
+    @abstractmethod
+    async def delete(self, app_name: str) -> None: ...
+
     async def get_connection(self, app_name: str) -> Connection | None:
         """Get connection from storage."""
 
@@ -72,6 +75,14 @@ class DictStorage(Storage, Generic[Model]):
     @staticmethod
     def gen_key(app_name: str, key: str) -> str:
         return f"{app_name}:{key}"
+
+    async def delete(self, app_name: str):
+        """Delete storage."""
+
+        key = self.gen_key(app_name, self.entity_id)
+        if key in self.STORAGE:
+            del self.STORAGE[key]
+
 
     async def insert(self, app_name: str, data: Model) -> None:
         """Insert user wallet app to storage."""
@@ -129,6 +140,11 @@ class MongoStorage(Storage, Generic[Model]):
 
         await self.collection.create_index([(self.primary_key, 1), ("app_name", 1)], unique=True)
         await self.collection.create_index("heartbeat")
+
+    async def delete(self, app_name: str) -> None:
+        """Delete app storage."""
+
+        await self.collection.delete_one(self.gen_search_query(app_name))
 
     async def insert(self, app_name: str, data: Model) -> None:
         """Insert user wallet app to storage."""
