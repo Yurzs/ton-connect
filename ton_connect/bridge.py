@@ -288,10 +288,17 @@ class Bridge:
 
         iteration_task: asyncio.Task | None = None
 
+        timeout = aiohttp.ClientTimeout(
+            total=5,
+            connect=2,
+            sock_connect=2,
+            sock_read=2,
+        )
+
         while not self.stop.is_set():
             try:
                 url = self.generate_url()
-                async with aiohttp.ClientSession(timeout=2) as session:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
                     async with aiohttp_sse_client.client.EventSource(
                         url=url,
                         session=session,
