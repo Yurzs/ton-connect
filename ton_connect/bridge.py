@@ -1,20 +1,19 @@
 import asyncio
 import logging
 import re
-from datetime import timedelta
 from functools import cached_property
 from typing import Annotated, Any, Awaitable, Callable, Literal
 from urllib.parse import quote_plus
 
-import aiohttp
-import aiohttp_sse_client.client
+import httpx
+import httpx_sse
 import pydantic
-from aiohttp_sse_client.client import MessageEvent
+from httpx_sse import ServerSentEvent
 from nacl.exceptions import CryptoError
 from pydantic import AnyUrl, Base64Bytes, Field, HttpUrl, ValidationError
 
 from ton_connect.crypto import SessionCrypto
-from ton_connect.misc import SSL_CONTEXT, encode_telegram_url_parameters, iterate_event_source
+from ton_connect.misc import encode_telegram_url_parameters
 from ton_connect.model.app.request import AppRequest, ConnectRequest
 from ton_connect.model.app.response import AppResponses
 from ton_connect.model.model import BaseModel
@@ -100,6 +99,8 @@ class Bridge:
         self.connected: asyncio.Event = asyncio.Event()
         self.connector_ready: asyncio.Event = connector_ready
         self.listener: asyncio.Task[Callable[[str], Awaitable[None]]] | None = None
+
+        self.pulse_listener: asyncio.Task[None] | None = None
 
         self.last_rpc_event_id: str | None = last_rpc_event_id
         self.stop = asyncio.Event()
@@ -223,22 +224,21 @@ class Bridge:
             wallet_app_key.hex(),
         )
 
-        async with aiohttp.ClientSession(headers=self.request_headers) as session:
-            async with session.post(
+        async with httpx.AsyncClient(headers=self.request_headers) as client:
+            response = await client.post(
                 url,
-                data=data,
-                ssl=SSL_CONTEXT,
+                content=data,
                 timeout=timeout,
-            ) as response:
-                LOG.info(
-                    "Sent request %s to the wallet: %s (%s)",
-                    request.id,
-                    request.method,
-                    request,
-                )
-                return await response.json()
+            )
+            LOG.info(
+                "Sent request %s to the wallet: %s (%s)",
+                request.id,
+                request.method,
+                request,
+            )
+            return response.json()
 
-    def parse_message(self, event: MessageEvent) -> BridgeMessage | None:
+    def parse_message(self, event: ServerSentEvent) -> BridgeMessage | None:
         """Parse message from the wallet bridge."""
 
         try:
@@ -268,18 +268,18 @@ class Bridge:
             source=wallet_message_event.sender,
         )
 
-    def handle_event(self, event: MessageEvent) -> None:
+    def handle_event(self, event: ServerSentEvent) -> None:
         """Handle event."""
 
-        self.last_rpc_event_id = event.last_event_id
+        self.last_rpc_event_id = event.id
         message = self.parse_message(event)
 
         if message:
             asyncio.create_task(self.queue.put(message))
             LOG.debug("Sent message to the queue: %s", message)
 
-    async def handle_error(self, *args, **kwargs) -> None:
-        LOG.error("Bridge connection error: %s %s", args, kwargs)
+    def handle_error(self, event: ServerSentEvent) -> None:
+        LOG.error("Bridge connection error: %s", event)
 
     async def listen(self) -> None:
         """Listen for events from the bridge SSE."""
@@ -288,56 +288,45 @@ class Bridge:
 
         iteration_task: asyncio.Task | None = None
 
-        timeout = aiohttp.ClientTimeout(
-            total=5,
-            connect=2,
-            sock_connect=2,
-            sock_read=2,
-        )
-
         while not self.stop.is_set():
-            try:
-                url = self.generate_url()
-                async with aiohttp.ClientSession(timeout=timeout) as session:
-                    async with aiohttp_sse_client.client.EventSource(
-                        url=url,
-                        session=session,
-                        max_connect_retry=3,
-                        ssl=SSL_CONTEXT,
-                        reconnection_time=timedelta(seconds=2),
-                        on_message=self.handle_event,
-                        on_open=self.connected.set,
-                        on_error=self.handle_error,
-                    ) as event_source:
+            async with httpx.AsyncClient(timeout=None) as client:
+                try:
+                    url = self.generate_url()
+                    async with httpx_sse.aconnect_sse(client, "GET", url) as event_source:
+                        self.connected.set()
                         LOG.info("Bridge connected: %s", self.app_name)
 
                         await self.connector_ready.wait()
-                        iteration_task = asyncio.create_task(iterate_event_source(event_source))
 
-                        while self.connected and not self.stop.is_set():
-                            await asyncio.sleep(5)
-                            await self.queue.put(
-                                BridgeMessage(
-                                    event="heartbeat",
-                                    app_name=self.app_name,
-                                    source=b"",
-                                )
-                            )
+                        async for message in event_source.aiter_sse():
+                            match message.event:
+                                case "heartbeat":
+                                    await self.queue.put(
+                                        BridgeMessage(
+                                            event="heartbeat",
+                                            app_name=self.app_name,
+                                            source=b"",
+                                        )
+                                    )
+                                case "error":
+                                    self.handle_error(message)
+                                case _:
+                                    self.handle_event(message)
 
-            except asyncio.CancelledError:
-                iteration_task.cancel()
-                self.stop.set()
-                LOG.info("Bridge listener for %s is cancelled.", self.app_name)
-                return
-            except TimeoutError:
-                LOG.error("Bridge connection timeout")
-            except Exception as e:
-                LOG.exception("Bridge connection unhandled error: %s", e)
-            finally:
-                if not self.stop.is_set():
-                    await self.disconnect(send_event=False)
-                    LOG.info("Retrying Bridge connection in 1 second...")
-                    await asyncio.sleep(1)
+                except asyncio.CancelledError:
+                    iteration_task.cancel()
+                    self.stop.set()
+                    LOG.info("Bridge listener for %s is cancelled.", self.app_name)
+                    return
+                except TimeoutError:
+                    LOG.error("Bridge connection timeout")
+                except Exception as e:
+                    LOG.exception("Bridge connection unhandled error: %s", e)
+                finally:
+                    self.connected.clear()
+                    if not self.stop.is_set():
+                        LOG.info("Retrying Bridge connection in 1 second...")
+                        await asyncio.sleep(1)
 
     def generate_url(self) -> str:
         """Generate URL for the bridge."""

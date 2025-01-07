@@ -13,13 +13,12 @@ from typing import (
     TypeVar,
 )
 
-import aiohttp
+import httpx
 from pydantic import Field, HttpUrl, validate_call
 
 import ton_connect.model.app.response as app_responses
 import ton_connect.model.wallet.event as wallet_events
 from ton_connect.bridge import Bridge, BridgeMessage, Connection, Session
-from ton_connect.misc import SSL_CONTEXT
 from ton_connect.model.app.request import (
     AppRequestType,
     ConnectRequest,
@@ -172,14 +171,11 @@ class TonConnect:
         """
 
         if cls.APPS.get("last_timestamp", 0) + cls.APPS_CACHE_TTL < time.time():
-            async with aiohttp.ClientSession() as session:
-                async with session.get(cls.APPS_URL, ssl=SSL_CONTEXT) as response:
-                    response_apps = [
-                        WalletApp.model_validate(wallet)
-                        for wallet in await response.json(content_type="text/plain")
-                    ]
-                    cls.APPS["last_timestamp"] = time.time()
-                    cls.APPS["apps"] = response_apps
+            async with httpx.AsyncClient() as client:
+                response = await client.get(cls.APPS_URL)
+                response_apps = [WalletApp.model_validate(wallet) for wallet in response.json()]
+                cls.APPS["last_timestamp"] = time.time()
+                cls.APPS["apps"] = response_apps
 
         apps: Iterable[WalletApp] = (app for app in cls.APPS["apps"])
 
@@ -372,12 +368,12 @@ class TonConnect:
                 account=connection.connect_event.payload.find_item_by_type(TonAddressItem),
                 entity_id=self.storage.entity_id,
             )
-            await self.listeners[message.event.name](connector_event)
+            asyncio.create_task(self.listeners[message.event.name](connector_event))
         elif isinstance(message.event, WalletEventType):
             LOG.error(f"Unhandled event: {message.event}")
 
         for task in int_tasks:
-            await task()
+            asyncio.create_task(task())
 
     async def start_listener(self) -> None:
         """Listen for wallet events."""
@@ -396,15 +392,18 @@ class TonConnect:
                         connection = await self.storage.get_connection(message.app_name)
                         if connection is None:
                             LOG.error(f"Connection not found for {message.app_name}")
+                            await self.bridges.get(message.app_name).disconnect(send_event=False)
+                            LOG.info(f"Bridge {message.app_name} stopped")
                             continue
 
+                        # 5 Seconds timeout for handling message so we can continue to listen
                         await asyncio.wait_for(
                             self.handle_message(connection, message),
                             timeout=5,
                         )
 
                 except Exception as e:
-                    LOG.error(f"Error processing event: {e}")
+                    LOG.error(f"Error processing event: {message} {type(e)}({e})")
                 else:
                     self.queue.task_done()
 

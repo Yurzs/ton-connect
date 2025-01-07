@@ -1,12 +1,6 @@
-import ssl
-from typing import AsyncIterator, TypeVar
-
-import certifi
-from aiohttp import ClientConnectionError
+from typing import TypeVar
 
 R = TypeVar("R")
-
-SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 
 def encode_telegram_url_parameters(parameters: str) -> str:
@@ -21,11 +15,3 @@ def encode_telegram_url_parameters(parameters: str) -> str:
         .replace("%", "--")
         .replace("+", "")
     )
-
-
-async def iterate_event_source(iterator: AsyncIterator) -> None:
-    try:
-        async for _ in iterator:
-            pass
-    except ClientConnectionError:
-        pass
