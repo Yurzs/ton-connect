@@ -25,6 +25,7 @@ from ton_connect.model.app.request import (
     TonAddressRequestItem,
     TonProofRequestItem,
 )
+from ton_connect.model.app.response import AppResponses
 from ton_connect.model.app.wallet import WalletApp
 from ton_connect.model.model import BaseModel
 from ton_connect.model.wallet.device import Device
@@ -360,7 +361,7 @@ class TonConnect:
             case _:
                 LOG.error(f"Unhandled event: {message.event}")
 
-        event_name = "app" if isinstance(message.event, AppRequestType) else message.event.name
+        event_name = "app" if isinstance(message.event, AppResponses) else message.event.name
 
         if event_name in self.listeners:
             connection = await self.storage.get_connection(message.app_name)
