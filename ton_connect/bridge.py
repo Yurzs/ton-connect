@@ -278,6 +278,9 @@ class Bridge:
             asyncio.create_task(self.queue.put(message))
             LOG.debug("Sent message to the queue: %s", message)
 
+    async def handle_error(self, *args, **kwargs) -> None:
+        LOG.error("Bridge connection error: %s %s", args, kwargs)
+
     async def listen(self) -> None:
         """Listen for events from the bridge SSE."""
 
@@ -288,15 +291,16 @@ class Bridge:
         while not self.stop.is_set():
             try:
                 url = self.generate_url()
-                async with aiohttp.ClientSession() as session:
+                async with aiohttp.ClientSession(timeout=2) as session:
                     async with aiohttp_sse_client.client.EventSource(
                         url=url,
                         session=session,
-                        max_connect_retry=1,
+                        max_connect_retry=3,
                         ssl=SSL_CONTEXT,
                         reconnection_time=timedelta(seconds=2),
                         on_message=self.handle_event,
                         on_open=self.connected.set,
+                        on_error=self.handle_error,
                     ) as event_source:
                         LOG.info("Bridge connected: %s", self.app_name)
 
