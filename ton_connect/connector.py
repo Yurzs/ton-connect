@@ -15,7 +15,6 @@ from typing import (
 
 import aiohttp
 from pydantic import Field, HttpUrl, validate_call
-from pymongo.errors import DuplicateKeyError
 
 import ton_connect.model.app.response as app_responses
 import ton_connect.model.wallet.event as wallet_events
@@ -24,7 +23,7 @@ from ton_connect.misc import SSL_CONTEXT
 from ton_connect.model.app.request import (
     AppRequestType,
     ConnectRequest,
-    SendTransactionRequest, TonAddressRequestItem,
+    TonAddressRequestItem,
     TonProofRequestItem,
 )
 from ton_connect.model.app.wallet import WalletApp
@@ -36,7 +35,7 @@ from ton_connect.model.wallet.event import (
     WalletEventType,
 )
 from ton_connect.model.wallet.wallet import Account
-from ton_connect.storage import BridgeStorage, BridgeData, BridgeKey
+from ton_connect.storage import BridgeData, BridgeKey, BridgeStorage
 
 T = TypeVar("T")
 C = TypeVar("C")
@@ -59,7 +58,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-ListenerEvent = WalletEventName | Literal["heartbeat", "stopped"]
+ListenerEvent = WalletEventName | Literal["heartbeat", "stopped", "app"]
 
 
 class ConnectorEvent(BaseModel):
@@ -348,9 +347,15 @@ class TonConnect:
                 | app_responses.SignDataSuccess()
             ):
                 if message.event.id in self.rpc_response_waiters:
-                    self.rpc_response_waiters[message.event.id].set_result(message)
+                    self.rpc_response_waiters.pop(message.event.id).set_result(message)
+                elif self.listeners.get("app") is not None:
+                    await self.listeners["app"](message)
                 else:
-                    LOG.error("Unexpected App message: %s", message)
+                    LOG.error(
+                        "Unexpected App message: %s. "
+                        "Register `app` listener to handling wallet app events",
+                        message,
+                    )
 
                 connection.last_rpc_event_id = message.event.id
                 return
@@ -367,7 +372,7 @@ class TonConnect:
                 account=connection.connect_event.payload.find_item_by_type(TonAddressItem),
                 entity_id=self.storage.entity_id,
             )
-            await asyncio.create_task(self.listeners[message.event.name](connector_event))
+            await self.listeners[message.event.name](connector_event)
         elif isinstance(message.event, WalletEventType):
             LOG.error(f"Unhandled event: {message.event}")
 
@@ -443,7 +448,7 @@ class TonConnect:
         request: AppRequestType,
         wait_response: bool = True,
         timeout: int = 5,
-    ) -> asyncio.Task[app_responses.AppResponses] | None:
+    ) -> asyncio.Future[app_responses.AppResponses] | None:
         """Send request to the wallet.
 
         :param app_name: Wallet app name.
@@ -481,7 +486,7 @@ class TonConnect:
             ready: asyncio.Future[app_responses.AppResponses] = Future()
             self.rpc_response_waiters[request.id] = ready
 
-            return asyncio.create_task(asyncio.wait_for(ready, timeout=ttl))
+            return ready
 
         elif response["statusCode"] != 200:
             raise RPCError(response)

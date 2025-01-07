@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Annotated, Any, ClassVar, Generic, List, Literal, TypeVar
 
-from pydantic import Field, computed_field, Base64Str
+from pydantic import Field, computed_field
 from pydantic.main import IncEx
 
 from ton_connect.model.model import BaseModel

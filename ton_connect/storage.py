@@ -9,7 +9,7 @@ from pymongo.asynchronous.mongo_client import AsyncMongoClient
 
 from ton_connect.bridge import Connection
 
-Model = TypeVar("Model", bound="StorageData")
+Model = TypeVar("Model", bound="BridgeData")
 
 
 class BridgeKey(str, Enum):
@@ -76,13 +76,12 @@ class DictBridgeStorage(BridgeStorage, Generic[Model]):
     def gen_key(app_name: str, key: str) -> str:
         return f"{app_name}:{key}"
 
-    async def delete(self, app_name: str):
+    async def delete(self, app_name: str) -> None:
         """Delete storage."""
 
         key = self.gen_key(app_name, self.entity_id)
         if key in self.STORAGE:
             del self.STORAGE[key]
-
 
     async def insert(self, app_name: str, data: Model) -> None:
         """Insert user wallet app to storage."""

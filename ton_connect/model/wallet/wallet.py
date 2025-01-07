@@ -4,7 +4,7 @@ from typing import Optional
 
 from nacl.encoding import HexEncoder
 from nacl.signing import VerifyKey
-from pydantic import Base64Str, BaseModel, Field
+from pydantic import BaseModel, Field
 
 from ton_connect.types import HexBytes
 
