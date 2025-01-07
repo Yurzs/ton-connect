@@ -453,7 +453,7 @@ class TonConnect:
             if connection is None:
                 raise RuntimeError("Connection not found")
 
-            request.id = str(connection.next_rpc_request_id)
+            request.id = connection.next_rpc_request_id
             connection.next_rpc_request_id += 1
 
             ttl = 5 * 60

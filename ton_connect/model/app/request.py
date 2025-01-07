@@ -22,7 +22,7 @@ class AppRequest(BaseModel, Generic[_Method]):
     PARAMETERS: ClassVar[list[str]] = []
 
     method: _Method = Field(..., description="Method name")
-    id: str | None = Field(None, description="Event ID")
+    id: int | None = Field(None, description="Event ID")
 
     @computed_field
     def params(self) -> List[str]:
