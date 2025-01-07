@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Annotated, Any, ClassVar, Generic, List, Literal, TypeVar
 
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, Base64Str
 from pydantic.main import IncEx
 
 from ton_connect.model.model import BaseModel
@@ -72,6 +72,7 @@ class SignDataParams(BaseModel):
 class SendTransactionMessage(BaseModel):
     address: str = Field(..., description="Address")
     amount: str = Field(..., description="Amount")
+    payload: Base64Str | None = Field(None, description="Payload")
 
 
 class SendTransactionRequest(AppRequest[Literal[Method.SEND_TRANSACTION]]):
