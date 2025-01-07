@@ -316,11 +316,13 @@ class TonConnect:
             case "heartbeat":
                 LOG.debug("Heartbeat received")
                 await self.storage.set(message.app_name, BridgeKey.HEARTBEAT, int(time.time()))
+                return
 
             case "stopped":
                 LOG.info("Bridge %s stopped", message.app_name)
                 self.bridges.pop(message.app_name)
                 await self.storage.remove(message.app_name, BridgeKey.CONNECTION)
+                return
 
             case wallet_events.ConnectSuccessEvent():
                 connection.last_wallet_event_id = message.event.id
@@ -343,10 +345,10 @@ class TonConnect:
                 | app_responses.SignDataSuccess()
             ):
                 if message.event.id in self.rpc_response_waiters:
+                    # Targeted responses are not handled by listeners
                     self.rpc_response_waiters.pop(message.event.id).set_result(message)
-                elif self.listeners.get("app") is not None:
-                    await self.listeners["app"](message)
-                else:
+                    return
+                elif self.listeners.get("app") is None:
                     LOG.error(
                         "Unexpected App message: %s. "
                         "Register `app` listener to handling wallet app events",
@@ -354,12 +356,13 @@ class TonConnect:
                     )
 
                 connection.last_rpc_event_id = message.event.id
-                return
 
             case _:
                 LOG.error(f"Unhandled event: {message.event}")
 
-        if isinstance(message.event, WalletEventType) and message.event.name in self.listeners:
+        event_name = "app" if isinstance(message.event, AppRequestType) else message.event.name
+
+        if event_name in self.listeners:
             connection = await self.storage.get_connection(message.app_name)
             connector_event = ConnectorEvent(
                 wallet_name=message.app_name,
@@ -368,7 +371,7 @@ class TonConnect:
                 account=connection.connect_event.payload.find_item_by_type(TonAddressItem),
                 entity_id=self.storage.entity_id,
             )
-            asyncio.create_task(self.listeners[message.event.name](connector_event))
+            asyncio.create_task(self.listeners[event_name](connector_event))
         elif isinstance(message.event, WalletEventType):
             LOG.error(f"Unhandled event: {message.event}")
 
