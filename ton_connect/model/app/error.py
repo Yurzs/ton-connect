@@ -33,4 +33,4 @@ class SignDataErrorCode(IntEnum):
 
 class AppResponseError(BaseModel, Generic[_GenericResponseError]):
     id: str = Field(..., description="Event ID")
-    error: _GenericResponseError = Field(..., description="Error message")
+    error: _GenericResponseError = Field(..., description="Error message", alias="message")
