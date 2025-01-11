@@ -63,7 +63,7 @@ ListenerEvent = WalletEventName | Literal["heartbeat", "stopped", "app"]
 
 class ConnectorEvent(BaseModel):
     wallet_name: str = Field(..., description="Wallet name")
-    event: WalletEventType = Field(..., description="Event")
+    event: WalletEventType | AppResponses = Field(..., description="Event")
     device: Device = Field(..., description="User device info")
     account: Account = Field(..., description="User account info")
     entity_id: str = Field(..., description="Entity ID")
