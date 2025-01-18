@@ -64,8 +64,8 @@ ListenerEvent = WalletEventName | Literal["heartbeat", "stopped", "app"]
 class ConnectorEvent(BaseModel):
     wallet_name: str = Field(..., description="Wallet name")
     event: WalletEventType | AppResponses = Field(..., description="Event")
-    device: Device = Field(..., description="User device info")
-    account: Account = Field(..., description="User account info")
+    device: Device | None = Field(..., description="User device info")
+    account: Account | None = Field(..., description="User account info")
     entity_id: str = Field(..., description="Entity ID")
 
 
@@ -365,11 +365,19 @@ class TonConnect:
 
         if event_name in self.listeners:
             connection = await self.storage.get_connection(message.app_name)
+
+            account = None
+            device = None
+
+            if connection.connect_event:
+                account = connection.connect_event.payload.find_item_by_type(TonAddressItem)
+                device = connection.connect_event.payload.device
+
             connector_event = ConnectorEvent(
                 wallet_name=message.app_name,
                 event=message.event,
-                device=connection.connect_event.payload.device,
-                account=connection.connect_event.payload.find_item_by_type(TonAddressItem),
+                device=device,
+                account=account,
                 entity_id=self.storage.entity_id,
             )
             asyncio.create_task(self.listeners[event_name](connector_event))
