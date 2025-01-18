@@ -50,7 +50,7 @@ class Payload(BaseModel, Generic[_ReplyItemGeneric]):
 
 class Event(BaseModel, Generic[_LiteralGeneric, _PayloadGeneric]):
     name: _LiteralGeneric = Field(..., description="Event name", alias="event")
-    id: int = Field(..., description="Event ID")
+    id: int | None = Field(None, description="Event ID")
     payload: _PayloadGeneric = Field(..., description="Event payload")
 
 
