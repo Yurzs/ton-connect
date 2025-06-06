@@ -18,7 +18,7 @@ The `TonConnect` class is responsible for managing connections to TON wallets. I
 
 ### Initializing TonConnect
 
-To initialize the `TonConnect` class, you need to provide the manifest URL and a storage instance. The manifest URL is the URL to the manifest file of your app, and the storage instance is used to store connection data. Note that the first argument to `DictStorage` is the user id.
+To initialize the `TonConnect` class, you need to provide the manifest URL and a storage instance. The manifest URL is the URL to the manifest file of your app, and the storage instance is used to store connection data. Note that the first argument to `DictBridgeStorage` is the user id.
 
 ```python
 from ton_connect.connector import TonConnect
